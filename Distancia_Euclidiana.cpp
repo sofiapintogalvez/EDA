@@ -49,12 +49,14 @@ int main()
     float menor = d1;
     string masSimilar = "2";
 
-    if (d2 < menor) {
+    if (d2 < menor) 
+    {
         menor = d2;
         masSimilar = "3";
     }
 
-    if (d3 < menor) {
+    if (d3 < menor) 
+    {
         menor = d3;
         masSimilar = "4";
     }
