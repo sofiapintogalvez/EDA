@@ -28,13 +28,55 @@ vector<Point> cargarPuntos(const string &nombreArchivo)
     }
 
     float x, y, z;
+    char coma;
 
     while(archivo >> x >> y >> z)
+    //while(archivo >> x >> coma >> y >> coma >> z)
         puntos.push_back(Point(x, y, z));
     archivo.close();
 
     cout << "Se subieron los puntos <3: " << puntos.size() << endl;
     return puntos;
+}
+
+void calcularRaiz(const vector<Point> &puntos, Point &bottomLeft, double &h)
+{
+    float minX = puntos[0].x;
+    float minY = puntos[0].y;
+    float minZ = puntos[0].z;
+
+    float maxX = puntos[0].x;
+    float maxY = puntos[0].y;
+    float maxZ = puntos[0].z;
+
+    for(int i = 1; i < puntos.size(); i++)
+    {
+        if(puntos[i].x < minX)
+            minX = puntos[i].x;
+
+        if(puntos[i].y < minY)
+            minY = puntos[i].y;
+
+        if(puntos[i].z < minZ)
+            minZ = puntos[i].z;
+
+        if(puntos[i].x > maxX)
+            maxX = puntos[i].x;
+
+        if(puntos[i].y > maxY)
+            maxY = puntos[i].y;
+
+        if(puntos[i].z > maxZ)
+            maxZ = puntos[i].z;
+    }
+
+    float rangoX = maxX - minX;
+    float rangoY = maxY - minY;
+    float rangoZ = maxZ - minZ;
+
+    h = max(rangoX, max(rangoY, rangoZ));
+
+    bottomLeft = Point(minX, minY, minZ);
 }
 
 float euclidiana(const Point &p1, const Point &p2)
@@ -102,7 +144,10 @@ class Octree
         bool exist(const Point &p);
         void insert(const Point &p);
         Point find_closest(const Point &p, int radio);
+        void getDatosNodo(const Point &p, Point &bl, double &altura);
         void print(int nivel);
+
+        void generarOBJ(ofstream &archivo, int &indice);
 };
 
 Octree* Octree::buscarNode(const Point &p)
@@ -248,6 +293,14 @@ Point Octree::find_closest(const Point &p, int radio)
     return pCercano;
 }
 
+void Octree::getDatosNodo(const Point &p, Point &bl, double &altura)
+{
+    Octree* node = buscarNode(p);
+
+    bl = node->bottomLeft;
+    altura = node->h;
+}
+
 void Octree::print(int nivel)
 {
     for(int i = 0; i < nivel; i++)
@@ -257,8 +310,8 @@ void Octree::print(int nivel)
     {
         cout << "Hoja: ";
         cout << "bottomLeft = (" << bottomLeft.x << "," << bottomLeft.y << "," << bottomLeft.z << ") ";
-        cout << "- h = " << h;
-        cout << " - nPuntos = " << nPoints << endl;
+        cout << "| h = " << h;
+        cout << " | nPuntos = " << nPoints << endl;
 
         for(int i = 0; i < points.size(); i++)
             cout << " (" << points[i].x << "," << points[i].y << "," << points[i].z << ")" << endl;
@@ -267,7 +320,7 @@ void Octree::print(int nivel)
     {
         cout << "Nodo: " << endl;
         cout << "bottomLeft = (" << bottomLeft.x << "," << bottomLeft.y << "," << bottomLeft.z << ") ";
-        cout << "- h = " << h;
+        cout << "| h = " << h;
 
         for(int i = 0; i < 8; i++)
         {
@@ -277,19 +330,93 @@ void Octree::print(int nivel)
     }
 }
 
+void Octree::generarOBJ(ofstream &archivo, int &indice)
+{
+    // Si es una hoja
+    if(children[0] == nullptr)
+    {
+        if(nPoints == 0)
+            return;
+
+        float x = bottomLeft.x;
+        float y = bottomLeft.y;
+        float z = bottomLeft.z;
+
+        float x2 = x + h;
+        float y2 = y + h;
+        float z2 = z + h;
+
+        // 8 vertices del cubo
+        archivo << "v " << x  << " " << y  << " " << z  << endl;
+        archivo << "v " << x2 << " " << y  << " " << z  << endl;
+        archivo << "v " << x2 << " " << y2 << " " << z  << endl;
+        archivo << "v " << x  << " " << y2 << " " << z  << endl;
+
+        archivo << "v " << x  << " " << y  << " " << z2 << endl;
+        archivo << "v " << x2 << " " << y  << " " << z2 << endl;
+        archivo << "v " << x2 << " " << y2 << " " << z2 << endl;
+        archivo << "v " << x  << " " << y2 << " " << z2 << endl;
+
+        // 6 caras del cubo
+        archivo << "f " << indice << " " << indice + 1 << " " << indice + 2 << " " << indice + 3 << endl;
+        archivo << "f " << indice + 4 << " " << indice + 5 << " " << indice + 6 << " " << indice + 7 << endl;
+        archivo << "f " << indice << " " << indice + 1 << " " << indice + 5 << " " << indice + 4 << endl;
+        archivo << "f " << indice + 2 << " " << indice + 3 << " " << indice + 7 << " " << indice + 6 << endl;
+        archivo << "f " << indice + 1 << " " << indice + 2 << " " << indice + 6 << " " << indice + 5 << endl;
+        archivo << "f " << indice + 3 << " " << indice << " " << indice + 4 << " " << indice + 7 << endl;
+
+        indice += 8;
+
+        return;
+    }
+
+    // Si no es hoja, seguimos recorriendo sus hijos
+    for(int i = 0; i < 8; i++)
+    {
+        if(children[i] != nullptr)
+            children[i]->generarOBJ(archivo, indice);
+    }
+}
+
 int main()
 {
-    Octree arbol(100.0, 1000, Point(-50.0f, -50.0f, -50.0f));
     vector<Point> puntos = cargarPuntos("aguila.xyz");
+    Point bottomLeft;
+    double h;
+
+    calcularRaiz(puntos, bottomLeft, h);
+
+    cout << "\tRAIZ" << endl;
+    cout << "bottomLeft = (" << bottomLeft.x << "," << bottomLeft.y << "," << bottomLeft.z << ")" << endl;
+    cout << "h = " << h << endl;
+
+    int N;
+    cout << "Ingrese N (capacidad cubo): ";
+    cin >> N;
+    Octree arbol(h, N, bottomLeft);
 
     for(int i = 0; i < puntos.size(); i++)
         arbol.insert(puntos[i]);
-    arbol.print(0);
+    //arbol.print(0);
 
-    Point p(1.0f, 1.0f, 1.0f);
-    Point rpta = arbol.find_closest(p, 25);
-    cout << "\nMas cercano a (" << p.x << "," << p.y << "," << p.z << ") con radio = 25:" << endl;
+    ofstream archivoOBJ("octree.obj");
+    int indice = 1;
+    arbol.generarOBJ(archivoOBJ, indice);
+    archivoOBJ.close();
+    cout << "Se genero el .obj" << endl;
+
+    Point p(21.0f, 5.0f, 143.0f);
+    Point rpta = arbol.find_closest(p, 50);
+    cout << "\nMas cercano a (" << p.x << "," << p.y << "," << p.z << ") con radio = 50 y N = 50:" << endl;
     cout << "(" << rpta.x << "," << rpta.y << "," << rpta.z << ")" << endl;
+
+    Point bl;
+    double altura;
+    arbol.getDatosNodo(rpta, bl, altura);
+
+    cout << "\nbottomLeft X = (" << bl.x << "," << bl.y << "," << bl.z << ")" << endl;
+    cout << "h X = " << altura << endl;
+    cout << endl;
 
     return 0;
 }
